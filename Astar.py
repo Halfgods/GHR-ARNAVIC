@@ -1,152 +1,189 @@
 import cv2
 import numpy as np
 import heapq
+import imutils
 import math
 
 
-def heuristic(a, b):
-    return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
+# IMAGE PROCESSING
 
-def check_line(grid, p1, p2):
-    y1, x1 = p1
-    y2, x2 = p2
-    
-    steps = max(abs(y2 - y1), abs(x2 - x1))
-    if steps == 0:
+def image_process(img):
+    h, w = img.shape[:2]
+
+    resized = imutils.resize(img, width=600)
+    scale_x = w / resized.shape[1]
+    scale_y = h / resized.shape[0]
+
+    gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+
+    kernel = np.ones((5, 5), np.uint8)
+    walls = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+
+    obstacle_map = (walls > 0).astype(np.uint8)
+    cv2.imwrite("obstacle_map.png", obstacle_map*255)  # for debugging
+    return obstacle_map, scale_x, scale_y
+
+
+
+# ASTAR
+
+class Astar:
+    def __init__(self, grid, start, goal):
+        self.grid = grid
+        self.start = (start[1], start[0])  # (row, col)
+        self.goal = (goal[1], goal[0])
+
+    def heuristic(self, a, b):
+        return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+# LINE OF SIGHT CHECK
+
+    def check_line(self, p1, p2):
+        y1, x1 = p1
+        y2, x2 = p2
+        steps = max(abs(y2 - y1), abs(x2 - x1))
+        if steps == 0:
+            return True
+
+        for i in range(1, steps + 1):
+            ny = int(y1 + i * (y2 - y1) / steps)
+            nx = int(x1 + i * (x2 - x1) / steps)
+            if self.grid[ny, nx] != 0:
+                return False
         return True
-        
-    dy = (y2 - y1) / steps
-    dx = (x2 - x1) / steps
-    
-    for i in range(1, steps + 1):
-        ny = int(y1 + i * dy)
-        nx = int(x1 + i * dx)
-        if grid[ny, nx] == 255:
-            return False
-    return True
 
-def smooth_path(grid, path):
-    if not path or len(path) < 3:
-        return path
-        
-    smoothed = [path[0]]
-    current_idx = 0
-    
-    while current_idx < len(path) - 1:
-        furthest_visible = current_idx + 1
-        for i in range(len(path) - 1, current_idx + 1, -1):
-            if check_line(grid, path[current_idx], path[i]):
-                furthest_visible = i
-                break
-        
-        smoothed.append(path[furthest_visible])
-        current_idx = furthest_visible
-        
-    return smoothed
+    # REMOVE EXTRA POINTS (KEEP ONLY TURNS)
 
-def astar(grid, start, goal):
-    rows, cols = grid.shape
-    open_set = []
-    heapq.heappush(open_set, (0, start, (0, 0)))
-
-    came_from = {}
-    g_score = {start: 0}
-    f_score = {start: heuristic(start, goal)}
-
-    directions = [(-1,0),(1,0),(0,-1),(0,1),
-                  (-1,-1),(-1,1),(1,-1),(1,1)]  
-
-    while open_set:
-        _, current, prev_dir = heapq.heappop(open_set)
-
-        if current == goal:
-            path = []
-            while current in came_from:
-                path.append(current)
-                current = came_from[current]
-            path.append(start)
-            path.reverse()
+    def remove_collinear(self, path):
+        if len(path) < 3:
             return path
 
-        for dy, dx in directions:
-            neighbor = (current[0]+dy, current[1]+dx)
+        cleaned = [path[0]]
 
-            if 0 <= neighbor[0] < rows and 0 <= neighbor[1] < cols:
-                if grid[neighbor[0], neighbor[1]] == 255:
-                    continue  
+        for i in range(1, len(path) - 1):
+            p0 = cleaned[-1]
+            p1 = path[i]
+            p2 = path[i + 1]
 
-                dist = math.sqrt(dy**2 + dx**2)
-                
-                penalty = 0
-                if prev_dir != (0, 0) and prev_dir != (dy, dx):
-                    penalty = 0.5
+            v1 = (p1[0] - p0[0], p1[1] - p0[1])
+            v2 = (p2[0] - p1[0], p2[1] - p1[1])
 
-                tentative_g = g_score[current] + dist + penalty
+            # cross product = 0 → same direction → skip
+            if v1[0] * v2[1] - v1[1] * v2[0] != 0:
+                cleaned.append(p1)
 
-                if neighbor not in g_score or tentative_g < g_score[neighbor]:
-                    came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g
-                    f_score[neighbor] = tentative_g + heuristic(neighbor, goal)
-                    heapq.heappush(open_set, (f_score[neighbor], neighbor, (dy, dx)))
+        cleaned.append(path[-1])
+        return cleaned
 
-    return None
 
+    # ASTAR SEARCH
+    # ----------------------------------
+    def find_path(self):
+        rows, cols = self.grid.shape
+        pq = [(0, self.start, (0, 0))]
+        g = {self.start: 0}
+        came = {}
+
+        dirs = [
+            (-1, 0), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (-1, 1), (1, -1), (1, 1)
+        ]
+
+        while pq:
+            _, cur, prev = heapq.heappop(pq)
+
+            if cur == self.goal:
+                path = []
+                while cur in came:
+                    path.append(cur)
+                    cur = came[cur]
+                path.append(self.start)
+                path.reverse()
+
+                # 🔥 FINAL CLEAN
+                path = self.remove_collinear(path)
+
+                # convert back to (x, y)
+                return [(p[1], p[0]) for p in path]
+
+            for dy, dx in dirs:
+                ny, nx = cur[0] + dy, cur[1] + dx
+                if not (0 <= ny < rows and 0 <= nx < cols):
+                    continue
+                if self.grid[ny, nx] != 0:
+                    continue
+
+                cost = math.hypot(dy, dx)
+                if prev != (0, 0) and prev != (dy, dx):
+                    cost += 0.5
+
+                ng = g[cur] + cost
+                nxt = (ny, nx)
+
+                if nxt not in g or ng < g[nxt]:
+                    g[nxt] = ng
+                    came[nxt] = cur
+                    f = ng + self.heuristic(nxt, self.goal)
+                    heapq.heappush(pq, (f, nxt, (dy, dx)))
+
+        return None
+
+
+# CLICK HANDLER
 
 points = []
+img_display = None
 
 def click_event(event, x, y, flags, param):
-    global points, img_display
-
+    global points
     if event == cv2.EVENT_LBUTTONDOWN:
-        points.append((y, x)) 
-
-        cv2.circle(img_display, (x,y), 5, (0,0,200), -1)
+        points.append((x, y))
+        print(f"Clicked: {(x,y)}")
+        cv2.circle(img_display, (x,y), 5, (0,0,255), -1)
         cv2.imshow("Map", img_display)
 
         if len(points) == 2:
             start, goal = points
-            
-            if grid_with_margin[start[0], start[1]] == 255:
-                print("Start point is too close to a wall, trying original grid...")
-            if grid_with_margin[goal[0], goal[1]] == 255:
-                print("Goal point is too close to a wall, trying original grid...")
-                
-            path = astar(grid_with_margin, start, goal)
-            
+
+            # scale down for grid
+            s = (int(start[0]/sx), int(start[1]/sy))
+            g = (int(goal[0]/sx), int(goal[1]/sy))
+
+            astar = Astar(grid, s, g)
+            path = astar.find_path()
+
             if not path:
-                print("No path found with margin, trying without it...")
-                path = astar(grid, start, goal)
-
-            if path:
-                smoothed = smooth_path(grid_with_margin, path)
-                
-                print("\nOptimal path sequence of turning points:")
-                for i, p in enumerate(smoothed):
-                    if i == 0:
-                        print(f"Start: (x={p[1]}, y={p[0]})")
-                    elif i == len(smoothed) - 1:
-                        print(f"Goal: (x={p[1]}, y={p[0]})")
-                    else:
-                        print(f"Turn {i}: (x={p[1]}, y={p[0]})")
-
-                for i in range(len(smoothed) - 1):
-                    p1 = (smoothed[i][1], smoothed[i][0])
-                    p2 = (smoothed[i+1][1], smoothed[i+1][0])
-                    cv2.line(img_display, p1, p2, (255, 0, 0), 2)
-                
-                cv2.imshow("Map", img_display)
-            else:
                 print("No path found")
+                return
 
-grid = cv2.imread("obstacle_map.png", 0)
+            # scale path back up
+            path = [(int(px*sx), int(py*sy)) for px,py in path]
 
-kernel = np.ones((5, 5), np.uint8)
-grid_with_margin = cv2.dilate(grid, kernel, iterations=2)
+            print("\nTurns:")
+            for p in path:
+                print(p)
 
-img_display = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
+            for i in range(len(path)-1):
+                cv2.line(img_display, path[i], path[i+1], (255,0,0), 2)
+
+            cv2.imshow("Map", img_display)
+
+
+
+# MAIN
+
+img = cv2.imread("Ground_floor.jpeg")
+img = imutils.resize(img, width=600)
+img_display = img.copy()
+
+grid, sx, sy = image_process(img)
+grid = cv2.dilate(grid, np.ones((5,5),np.uint8), 1)
 
 cv2.imshow("Map", img_display)
 cv2.setMouseCallback("Map", click_event)
-
+print("Click START then GOAL")
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+print(img.shape)
