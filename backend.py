@@ -53,35 +53,70 @@ def draw_path(img, path, start, end):
 # =========================
 class Astar:
     def __init__(self, grid, start, goal):
-        self.grid  = grid
-        self.start = (start[1], start[0])
-        self.goal  = (goal[1],  goal[0])
+        self.grid = grid
+        self.start = (start[1], start[0])  # (row, col)
+        self.goal = (goal[1], goal[0])
 
     def heuristic(self, a, b):
         return math.hypot(a[0] - b[0], a[1] - b[1])
 
+    # ----------------------------------
+    # LINE OF SIGHT CHECK
+    # ----------------------------------
+    def check_line(self, p1, p2):
+        y1, x1 = p1
+        y2, x2 = p2
+        steps = max(abs(y2 - y1), abs(x2 - x1))
+        if steps == 0:
+            return True
+
+        for i in range(1, steps + 1):
+            ny = int(y1 + i * (y2 - y1) / steps)
+            nx = int(x1 + i * (x2 - x1) / steps)
+            if self.grid[ny, nx] != 0:
+                return False
+        return True
+
+    # ----------------------------------
+    # REMOVE EXTRA POINTS (KEEP ONLY TURNS)
+    # ----------------------------------
     def remove_collinear(self, path):
         if len(path) < 3:
             return path
-        out = [path[0]]
-        for i in range(1, len(path) - 1):
-            a, b, c = out[-1], path[i], path[i + 1]
-            v1 = (b[0] - a[0], b[1] - a[1])
-            v2 = (c[0] - b[0], c[1] - b[1])
-            if v1[0] * v2[1] - v1[1] * v2[0] != 0:
-                out.append(b)
-        out.append(path[-1])
-        return out
 
+        cleaned = [path[0]]
+
+        for i in range(1, len(path) - 1):
+            p0 = cleaned[-1]
+            p1 = path[i]
+            p2 = path[i + 1]
+
+            v1 = (p1[0] - p0[0], p1[1] - p0[1])
+            v2 = (p2[0] - p1[0], p2[1] - p1[1])
+
+            # cross product = 0 → same direction → skip
+            if v1[0] * v2[1] - v1[1] * v2[0] != 0:
+                cleaned.append(p1)
+
+        cleaned.append(path[-1])
+        return cleaned
+
+    # ----------------------------------
+    # ASTAR SEARCH
+    # ----------------------------------
     def find_path(self):
         rows, cols = self.grid.shape
-        pq   = [(0, self.start)]
-        g    = {self.start: 0}
+        pq = [(0, self.start, (0, 0))]
+        g = {self.start: 0}
         came = {}
-        dirs = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]
+
+        dirs = [
+            (-1, 0), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (-1, 1), (1, -1), (1, 1)
+        ]
 
         while pq:
-            _, cur = heapq.heappop(pq)
+            _, cur, prev = heapq.heappop(pq)
 
             if cur == self.goal:
                 path = []
@@ -90,8 +125,12 @@ class Astar:
                     cur = came[cur]
                 path.append(self.start)
                 path.reverse()
+
+                # 🔥 FINAL CLEAN
                 path = self.remove_collinear(path)
-                return [[p[1], p[0]] for p in path]
+
+                # convert back to (x, y)
+                return [(p[1], p[0]) for p in path]
 
             for dy, dx in dirs:
                 ny, nx = cur[0] + dy, cur[1] + dx
@@ -99,12 +138,19 @@ class Astar:
                     continue
                 if self.grid[ny, nx] != 0:
                     continue
-                cost = g[cur] + math.hypot(dy, dx)
-                nxt  = (ny, nx)
-                if nxt not in g or cost < g[nxt]:
-                    g[nxt]    = cost
+
+                cost = math.hypot(dy, dx)
+                if prev != (0, 0) and prev != (dy, dx):
+                    cost += 0.5
+
+                ng = g[cur] + cost
+                nxt = (ny, nx)
+
+                if nxt not in g or ng < g[nxt]:
+                    g[nxt] = ng
                     came[nxt] = cur
-                    heapq.heappush(pq, (cost + self.heuristic(nxt, self.goal), nxt))
+                    f = ng + self.heuristic(nxt, self.goal)
+                    heapq.heappush(pq, (f, nxt, (dy, dx)))
 
         return None
 
@@ -179,5 +225,5 @@ def navigate(req: NavRequest):
         "start":            req.start,
         "end":              req.end,
         "turning_points":   path,           # [[x1,y1],[x2,y2],...]
-        "image_base64":     data_url,       # data:image/png;base64,...
+        "image_base64":     data_url,       # data:image/png;base64
     })
