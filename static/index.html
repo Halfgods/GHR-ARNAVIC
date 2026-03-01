@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <title>QR Display</title>
+    <style>
+        
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f9f9f9;
+        margin: 20px;
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #222;
+      }
+
+      .qr-wrapper {
+        display: flex;
+        flex-wrap: wrap;        /* Allows cards to move to next line on small screens */
+        justify-content: center; /* Centers the cards horizontally */
+        gap: 20px;              /* Space between cards */
+        
+    }
+
+      .qr-container {
+        background-color: #fff;
+        padding: 15px 20px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+        flex: 1 1 200px;        /* Grow/shrink, minimum width 200px */
+        max-width: 250px;       /* Max width for larger screens */
+        
+        box-shadow: 10px 10px 20px rgba(0,0,0,0.2);
+      }
+
+      .qr-container h2 {
+        margin-bottom: 10px;
+        color: #333;
+      }
+
+      .qr-container img {
+        width: 100%;            /* Fills the container width */
+        height: auto;           /* Maintains aspect ratio */
+      }
+
+      @media (max-width: 400px) {
+        .qr-container {
+          flex: 1 1 100%;       /* Full width on very small screens */
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 >Scan QR here</h1>
+    <div class="qr-wrapper">
+      <div class="qr-container">
+        <h2>Ground Floor</h2>
+        <img src="../QR/Ground_FloorQr.png" alt="QR Code" />
+      </div>
+
+      <div class="qr-container">
+        <h2>First Floor</h2>
+        <img src="../QR/First_FloorQR.png" alt="QR Code" />
+      </div>
+
+      <!-- Add more floors/cards here and they will automatically wrap -->
+    </div>
+  </body>
+</html>
