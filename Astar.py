@@ -4,9 +4,9 @@ import heapq
 import imutils
 import math
 
-
+# =========================
 # IMAGE PROCESSING
-
+# =========================
 def image_process(img):
     h, w = img.shape[:2]
 
@@ -25,9 +25,9 @@ def image_process(img):
     return obstacle_map, scale_x, scale_y
 
 
-
+# =========================
 # ASTAR
-
+# =========================
 class Astar:
     def __init__(self, grid, start, goal):
         self.grid = grid
@@ -37,9 +37,9 @@ class Astar:
     def heuristic(self, a, b):
         return math.hypot(a[0] - b[0], a[1] - b[1])
 
-
-# LINE OF SIGHT CHECK
-
+    # ----------------------------------
+    # LINE OF SIGHT CHECK
+    # ----------------------------------
     def check_line(self, p1, p2):
         y1, x1 = p1
         y2, x2 = p2
@@ -54,8 +54,9 @@ class Astar:
                 return False
         return True
 
+    # ----------------------------------
     # REMOVE EXTRA POINTS (KEEP ONLY TURNS)
-
+    # ----------------------------------
     def remove_collinear(self, path):
         if len(path) < 3:
             return path
@@ -77,7 +78,7 @@ class Astar:
         cleaned.append(path[-1])
         return cleaned
 
-
+    # ----------------------------------
     # ASTAR SEARCH
     # ----------------------------------
     def find_path(self):
@@ -130,9 +131,9 @@ class Astar:
 
         return None
 
-
+# =========================
 # CLICK HANDLER
-
+# =========================
 points = []
 img_display = None
 
@@ -171,10 +172,10 @@ def click_event(event, x, y, flags, param):
             cv2.imshow("Map", img_display)
 
 
-
+# =========================
 # MAIN
-
-img = cv2.imread("Ground_floor.jpeg")
+# =========================
+img = cv2.imread("First_Floor.jpeg")
 img = imutils.resize(img, width=600)
 img_display = img.copy()
 
